@@ -1,10 +1,3 @@
-bash
-python3 -c "
-content = open('/dev/stdin').read()
-with open('/mnt/user-data/outputs/wildlands.html', 'w') as f:
-    f.write(content)
-print('Done, size:', len(content))
-" << 'PYEOF'
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -55,6 +48,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'VT
 .hotbar-slot.active{border-color:var(--accent);background:rgba(176,106,255,.15);box-shadow:0 0 10px rgba(176,106,255,.3),inset 0 0 8px rgba(176,106,255,.1)}
 .hk{position:absolute;top:2px;left:4px;font-size:9px;color:rgba(255,255,255,.3);font-family:'Press Start 2P',monospace}
 #gameCanvas{display:block;image-rendering:pixelated;image-rendering:crisp-edges}
+#safeBadge{position:fixed;top:76px;right:14px;z-index:50;font-family:'Press Start 2P',monospace;font-size:8px;color:#44ffaa;background:rgba(6,4,18,0.9);border:1px solid rgba(68,255,170,0.4);padding:6px 10px;letter-spacing:2px;pointer-events:none;display:none}
+#safeBadge.show{display:block}
 /* INVENTORY */
 #inventoryScreen{position:fixed;inset:0;z-index:200;background:rgba(2,0,10,0.85);display:none;align-items:center;justify-content:center;backdrop-filter:blur(5px)}
 #inventoryScreen.open{display:flex}
@@ -214,6 +209,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'VT
 </div>
 <div id="zoneToast"></div>
 <div id="notif"></div>
+<div id="safeBadge">⚔ SAFE ZONE</div>
 <div id="hotbar" style="display:none">
   <div class="hotbar-slot active"><span class="hk">1</span>&#129683;</div>
   <div class="hotbar-slot"><span class="hk">2</span>&#127993;</div>
@@ -238,6 +234,15 @@ const BIOME_REGIONS=[
   {id:4,cx:100,cy:12,rx:55,ry:22,priority:1},{id:5,cx:28,cy:110,rx:30,ry:28,priority:1},
   {id:6,cx:148,cy:72,rx:22,ry:18,priority:2},{id:7,cx:185,cy:75,rx:20,ry:60,priority:0}
 ];
+
+// ── SAFE ZONE: starting village center + radius (in tiles) ──
+const SAFE_CX=85,SAFE_CY=72,SAFE_R=12;
+function inSafeZone(px,py){
+  const tx=px/TILE,ty=py/TILE;
+  const dx=tx-SAFE_CX,dy=ty-SAFE_CY;
+  return Math.sqrt(dx*dx+dy*dy)<SAFE_R;
+}
+
 let world=[],biomeMap=[],decorations=[],enemies=[],npcs=[],chests=[],particles=[],dmgTexts2=[];
 let camera={x:0,y:0},gameState='title',dialogBox=null,activeSlot=0;
 let notifQueue=[],notifTimer=0,currentZone='';
@@ -320,22 +325,52 @@ function generateWorld(){
       world[y][x]=t;
     }
   }
+
+  // ── STARTING VILLAGE (Hearthstone Village) - larger & more defined ──
+  const homeVillage={x:85,y:72};
+  // Big paved town square
+  for(let dy=-8;dy<=8;dy++){
+    for(let dx=-8;dx<=8;dx++){
+      const tx=homeVillage.x+dx,ty=homeVillage.y+dy;
+      if(tx<1||ty<1||tx>WW-2||ty>WH-2)continue;
+      const t=world[ty][tx];if(t===T.WATER||t===T.LAVA)continue;
+      const distSq=dx*dx+dy*dy;
+      if(distSq<=4)world[ty][tx]=T.PATH; // center plaza
+      else if(Math.abs(dx)<=1||Math.abs(dy)<=1)world[ty][tx]=T.PATH; // main roads
+      else if(distSq<=36)world[ty][tx]=T.DIRT; // cleared land
+    }
+  }
+  // Cardinal road extensions out of village
+  for(let r=8;r<=14;r++){
+    const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+    dirs.forEach(([ddx,ddy])=>{
+      const tx=homeVillage.x+ddx*r,ty=homeVillage.y+ddy*r;
+      if(tx>0&&tx<WW-1&&ty>0&&ty<WH-1){const t=world[ty][tx];if(t!==T.WATER&&t!==T.LAVA)world[ty][tx]=T.PATH;}
+    });
+  }
+
   const villages=[{x:85,y:72},{x:42,y:40},{x:155,y:108},{x:100,y:10},{x:30,y:112},{x:148,y:68}];
-  const vnames=['Merchant','Elder','Guard','Traveler','Herbalist','Sage'];
-  const vmsgs=['Fine goods from afar!','The river flows from frozen lands...','Desert raiders grow bolder.','The volcano stirs at night.','Swamp herbs heal deep wounds.','The ruins hold forgotten power.'];
+  const vnames=['Elder Mira','Scout Talon','Merchant Duro','Traveler','Herbalist','Sage'];
+  const vmsgs=['Welcome to Hearthstone Village! Monsters won\'t attack you here. Stay safe, traveler.','The river flows south from frozen lands. Strange lights in the forest at dusk.','Desert raiders grow bolder each moon. Hire protection if you venture east.','The volcano stirs at night. I saw fire sprites near the eastern road.','Swamp herbs heal deep wounds. Bring me blue moss if you find any.','The ruins hold forgotten power. Few who enter return unchanged.'];
   villages.forEach((v,vi)=>{
-    for(let dy=-5;dy<=5;dy++)for(let dx=-5;dx<=5;dx++){
-      const tx=v.x+dx,ty=v.y+dy;
-      if(tx>0&&tx<WW-1&&ty>0&&ty<WH-1){
-        const t=world[ty][tx];if(t===T.WATER||t===T.LAVA)continue;
-        if(Math.abs(dx)<=1||Math.abs(dy)<=1)world[ty][tx]=T.PATH;
-        else if(t!==T.PATH)world[ty][tx]=T.DIRT;
+    if(vi>0){// extra path clearing for non-home villages
+      for(let dy=-5;dy<=5;dy++)for(let dx=-5;dx<=5;dx++){
+        const tx=v.x+dx,ty=v.y+dy;
+        if(tx>0&&tx<WW-1&&ty>0&&ty<WH-1){
+          const t=world[ty][tx];if(t===T.WATER||t===T.LAVA)continue;
+          if(Math.abs(dx)<=1||Math.abs(dy)<=1)world[ty][tx]=T.PATH;
+          else if(t!==T.PATH)world[ty][tx]=T.DIRT;
+        }
       }
     }
-    npcs.push({x:(v.x+2)*TILE,y:(v.y-1)*TILE,w:14,h:22,color:'#60a5fa',name:vnames[vi],msg:vmsgs[vi],dir:1,timer:0,wvx:0});
+    npcs.push({x:(v.x+2)*TILE,y:(v.y-1)*TILE,w:14,h:22,color:vi===0?'#f0a060':'#60a5fa',name:vnames[vi],msg:vmsgs[vi],dir:1,timer:0,wvx:0,isVillageElder:vi===0});
   });
+
   const treeSet=new Set();
   for(let y=2;y<WH-2;y+=8)for(let x=2;x<WW-2;x+=8){
+    // Don't spawn trees in safe zone
+    const ddx=x-SAFE_CX,ddy=y-SAFE_CY;
+    if(ddx*ddx+ddy*ddy<(SAFE_R+2)*(SAFE_R+2))continue;
     const b=biomeMap[y]?.[x];
     const dense=b===1&&Math.random()<0.72,plain=b===0&&Math.random()<0.25,swamp=b===5&&Math.random()<0.4;
     if(!dense&&!plain&&!swamp)continue;
@@ -345,6 +380,9 @@ function generateWorld(){
       const ang=Math.random()*Math.PI*2,dist=Math.random()*r;
       const tx=Math.round(x+Math.cos(ang)*dist),ty=Math.round(y+Math.sin(ang)*dist);
       if(tx<1||ty<1||tx>WW-2||ty>WH-2)continue;
+      // Skip safe zone for trees
+      const sdx=tx-SAFE_CX,sdy=ty-SAFE_CY;
+      if(sdx*sdx+sdy*sdy<SAFE_R*SAFE_R)continue;
       const tt=world[ty]?.[tx];if(tt===T.WATER||tt===T.LAVA||tt===T.SHALLOW||tt===T.PATH)continue;
       const key=tx+','+ty;if(treeSet.has(key))continue;treeSet.add(key);
       decorations.push({type:swamp?'dead':'tree',x:tx*TILE,y:ty*TILE,variant:Math.floor(Math.random()*3),scale:.85+Math.random()*.3});
@@ -354,7 +392,7 @@ function generateWorld(){
     const b=biomeMap[y]?.[x],t=world[y]?.[x];
     if((b===3||b===4||b===6)&&t===T.STONE&&Math.random()<0.3)decorations.push({type:'rock',x:x*TILE+4,y:y*TILE+4,r:4+Math.random()*8,biome:b});
   }
-  // Plains enemies hit for 2 dmg
+
   const ES={
     0:[{name:'Slime',color:'#33dd66',color2:'#22aa44',hp:10,dmg:2,exp:10,gold:3,w:20,h:16,spd:.6},{name:'Goblin',color:'#88cc22',color2:'#557711',hp:14,dmg:2,exp:20,gold:8,w:18,h:24,spd:.8}],
     1:[{name:'Wolf',color:'#aabbcc',color2:'#778899',hp:45,dmg:18,exp:30,gold:5,w:22,h:18,spd:1.3},{name:'Bat',color:'#cc88ff',color2:'#9933cc',hp:12,dmg:8,exp:8,gold:2,w:18,h:14,spd:1.1}],
@@ -370,9 +408,20 @@ function generateWorld(){
     const cnt=Math.floor((region.rx*region.ry*4)/120);
     for(let i=0;i<cnt;i++){
       let ex,ey,tries=0;
-      do{const ang=Math.random()*Math.PI*2,r=Math.random();ex=Math.round(region.cx+Math.cos(ang)*region.rx*r);ey=Math.round(region.cy+Math.sin(ang)*region.ry*r);tries++}
-      while(tries<20&&(ex<1||ey<1||ex>=WW-1||ey>=WH-1||world[ey]?.[ex]===T.WATER||world[ey]?.[ex]===T.LAVA||world[ey]?.[ex]===T.VOID));
-      if(tries>=20)continue;
+      do{
+        const ang=Math.random()*Math.PI*2,r=Math.random();
+        ex=Math.round(region.cx+Math.cos(ang)*region.rx*r);
+        ey=Math.round(region.cy+Math.sin(ang)*region.ry*r);
+        tries++;
+        // Keep trying if in safe zone
+        const sdx=ex-SAFE_CX,sdy=ey-SAFE_CY;
+        if(sdx*sdx+sdy*sdy<(SAFE_R+3)*(SAFE_R+3))tries=Math.max(tries,0);
+      }
+      while(tries<25&&(ex<1||ey<1||ex>=WW-1||ey>=WH-1||world[ey]?.[ex]===T.WATER||world[ey]?.[ex]===T.LAVA||world[ey]?.[ex]===T.VOID||(()=>{const sdx=ex-SAFE_CX,sdy=ey-SAFE_CY;return sdx*sdx+sdy*sdy<(SAFE_R+3)*(SAFE_R+3)})()));
+      if(tries>=25)continue;
+      // Final safe zone check - don't spawn enemies inside
+      const sdx=ex-SAFE_CX,sdy=ey-SAFE_CY;
+      if(sdx*sdx+sdy*sdy<(SAFE_R+3)*(SAFE_R+3))continue;
       const t={...eset[Math.floor(Math.random()*eset.length)]};
       enemies.push({...t,x:ex*TILE,y:ey*TILE,maxHp:t.hp,alive:true,aggro:false,dir:1,flashTimer:0,wvx:0,wvy:0,timer:Math.floor(Math.random()*120)});
     }
@@ -444,7 +493,7 @@ function checkLvl(){
 }
 function tryInteract(){
   const px=player.x+player.w/2,py=player.y+player.h/2;
-  for(const n of npcs){if(Math.abs(n.x+n.w/2-px)<52&&Math.abs(n.y+n.h/2-py)<52){dialogBox={name:n.name,text:n.msg,timer:240};return}}
+  for(const n of npcs){if(Math.abs(n.x+n.w/2-px)<52&&Math.abs(n.y+n.h/2-py)<52){dialogBox={name:n.name,text:n.msg,timer:300};return}}
   for(const ch of chests){
     if(!ch.opened&&Math.abs(ch.x-px)<42&&Math.abs(ch.y-py)<42){
       ch.opened=true;const g=5+Math.floor(Math.random()*20),hp=5+Math.floor(Math.random()*12);
@@ -456,7 +505,13 @@ function tryInteract(){
   }
 }
 const ZONE_NAMES=['Verdant Plains','Thornwood Forest','Scorched Barrens','Emberveil Caldera','Frostpeak Wastes','Bogmere Swamplands','Ancient Sanctum','Shattered Coast'];
-function getZone(tx,ty){if(tx<0||ty<0||tx>=WW||ty>=WH)return'Unknown';return ZONE_NAMES[biomeMap[ty]?.[tx]]||'Wilderness'}
+function getZone(tx,ty){
+  // If inside safe zone, always call it Hearthstone Village
+  const sdx=tx-SAFE_CX,sdy=ty-SAFE_CY;
+  if(sdx*sdx+sdy*sdy<SAFE_R*SAFE_R)return'Hearthstone Village';
+  if(tx<0||ty<0||tx>=WW||ty>=WH)return'Unknown';
+  return ZONE_NAMES[biomeMap[ty]?.[tx]]||'Wilderness';
+}
 function notify(msg){notifQueue.push(msg)}
 function showNotif(){if(!notifQueue.length)return;const el=document.getElementById('notif');el.textContent=notifQueue.shift();el.style.opacity='1';notifTimer=110}
 const TPAL={
@@ -486,6 +541,21 @@ function drawTile(tx,ty,sx,sy){
   if(t===11){ctx.fillStyle='rgba(255,100,0,0.08)';ctx.fillRect(sx,sy,TILE,TILE)}
   ctx.fillStyle='rgba(0,0,0,0.04)';ctx.fillRect(sx,sy,TILE,1);ctx.fillRect(sx,sy,1,TILE);
 }
+
+// Draw village name banner in world
+function drawVillageBanner(cx,cy){
+  const vx=SAFE_CX*TILE-cx,vy=(SAFE_CY-10)*TILE-cy;
+  if(vx<-200||vx>W+200||vy<-40||vy>H)return;
+  ctx.save();
+  ctx.fillStyle='rgba(4,2,14,0.82)';
+  ctx.fillRect(vx-70,vy,148,22);
+  ctx.strokeStyle='rgba(255,204,68,0.55)';ctx.lineWidth=1;
+  ctx.strokeRect(vx-70,vy,148,22);
+  ctx.fillStyle='#ffcc44';ctx.font='bold 14px VT323';ctx.textAlign='center';
+  ctx.fillText('★ HEARTHSTONE VILLAGE ★',vx+4,vy+16);
+  ctx.restore();
+}
+
 function drawTree(d,cx,cy){
   const sx=d.x-cx,sy=d.y-cy;if(sx<-60||sx>W+60||sy<-80||sy>H+40)return;
   const sc=d.scale||1,tw=Math.floor(30*sc),th=Math.floor(34*sc),tx2=sx+(16-tw/2),ty2=sy-th+24;
@@ -508,6 +578,45 @@ function drawRock(d,cx,cy){
   ctx.fillStyle=col2;ctx.beginPath();ctx.ellipse(sx-r*.2,sy-r*.2,r*.55,r*.4,-.3,0,Math.PI*2);ctx.fill();
   ctx.fillStyle='rgba(255,255,255,0.08)';ctx.beginPath();ctx.ellipse(sx-r*.25,sy-r*.2,r*.2,r*.15,-.5,0,Math.PI*2);ctx.fill();
 }
+
+// Draw village buildings
+function drawBuildings(cx,cy){
+  const buildings=[
+    {x:(SAFE_CX-4)*TILE,y:(SAFE_CY-5)*TILE,w:4*TILE,h:3*TILE,color:'#5c3a1e',roof:'#8b1a1a',label:'INN'},
+    {x:(SAFE_CX+1)*TILE,y:(SAFE_CY-4)*TILE,w:3*TILE,h:2*TILE,color:'#4a3a2a',roof:'#6b4c2a',label:'SHOP'},
+    {x:(SAFE_CX-6)*TILE,y:(SAFE_CY+1)*TILE,w:3*TILE,h:2*TILE,color:'#3a3a4a',roof:'#4a4a6a',label:'FORGE'},
+    {x:(SAFE_CX+2)*TILE,y:(SAFE_CY+2)*TILE,w:2*TILE,h:2*TILE,color:'#3a4a2a',roof:'#4a6a2a',label:'HERB'},
+  ];
+  buildings.forEach(b=>{
+    const sx=b.x-cx,sy=b.y-cy;
+    if(sx>W+b.w||sx<-b.w||sy>H+b.h||sy<-b.h)return;
+    // Shadow
+    ctx.fillStyle='rgba(0,0,0,0.2)';ctx.fillRect(sx+4,sy+b.h,b.w,6);
+    // Wall
+    ctx.fillStyle=b.color;ctx.fillRect(sx,sy,b.w,b.h);
+    // Wall highlight
+    ctx.fillStyle='rgba(255,255,255,0.07)';ctx.fillRect(sx,sy,b.w,4);
+    ctx.fillStyle='rgba(0,0,0,0.18)';ctx.fillRect(sx,sy+b.h-4,b.w,4);
+    // Roof (pitched triangle)
+    ctx.fillStyle=b.roof;
+    ctx.beginPath();ctx.moveTo(sx-4,sy);ctx.lineTo(sx+b.w/2,sy-18);ctx.lineTo(sx+b.w+4,sy);ctx.closePath();ctx.fill();
+    ctx.fillStyle='rgba(0,0,0,0.15)';
+    ctx.beginPath();ctx.moveTo(sx+b.w/2,sy-18);ctx.lineTo(sx+b.w+4,sy);ctx.lineTo(sx+b.w,sy);ctx.closePath();ctx.fill();
+    // Door
+    const dw=10,dh=16,dx2=sx+b.w/2-dw/2;
+    ctx.fillStyle='#1a0e06';ctx.fillRect(dx2,sy+b.h-dh,dw,dh);
+    ctx.fillStyle='rgba(255,180,80,0.3)';ctx.fillRect(dx2+1,sy+b.h-dh+2,3,5);
+    // Windows
+    if(b.w>2*TILE){
+      ctx.fillStyle='rgba(255,220,100,0.25)';ctx.fillRect(sx+6,sy+6,12,10);ctx.fillRect(sx+b.w-18,sy+6,12,10);
+      ctx.strokeStyle='#2a1a0a';ctx.lineWidth=1;ctx.strokeRect(sx+6,sy+6,12,10);ctx.strokeRect(sx+b.w-18,sy+6,12,10);
+    }
+    // Label
+    ctx.fillStyle='rgba(255,220,150,0.7)';ctx.font='bold 10px VT323';ctx.textAlign='center';
+    ctx.fillText(b.label,sx+b.w/2,sy-22);
+  });
+}
+
 function drawPlayer(cx,cy){
   const sx=player.x-cx,sy=player.y-cy;
   if(player.invincible>0&&Math.floor(player.invincible/3)%2===0)return;
@@ -568,7 +677,10 @@ function drawNPC(n,cx,cy){
   const sx=n.x-cx,sy=n.y-cy;if(sx<-60||sx>W+60||sy<-60||sy>H+60)return;
   ctx.fillStyle='rgba(0,0,0,0.15)';ctx.beginPath();ctx.ellipse(sx+n.w/2,sy+n.h+3,n.w/2+1,4,0,0,Math.PI*2);ctx.fill();
   ctx.fillStyle=n.color;ctx.fillRect(sx,sy+6,n.w,n.h-6);ctx.fillStyle='rgba(255,255,255,0.18)';ctx.fillRect(sx+2,sy+6,n.w-4,3);
-  ctx.fillStyle='#fde68a';ctx.fillRect(sx+1,sy,n.w-2,8);ctx.fillStyle='#78350f';ctx.fillRect(sx+1,sy-2,n.w-2,4);
+  // Village elder has a special hat
+  if(n.isVillageElder){ctx.fillStyle='#4a2060';ctx.fillRect(sx-1,sy-3,n.w+2,8);ctx.fillStyle='#6a30a0';ctx.fillRect(sx+1,sy-8,n.w-2,7);}
+  else{ctx.fillStyle='#78350f';ctx.fillRect(sx+1,sy-2,n.w-2,4);}
+  ctx.fillStyle='#fde68a';ctx.fillRect(sx+1,sy,n.w-2,8);
   ctx.fillStyle='#1a0a30';ctx.fillRect(sx+3,sy+2,2,2);ctx.fillRect(sx+n.w-5,sy+2,2,2);
   const px2=player.x-cx,py2=player.y-cy;
   if(Math.hypot(sx-px2,sy-py2)<160){ctx.fillStyle='rgba(255,255,255,0.9)';ctx.fillRect(sx-4,sy-20,32,14);ctx.fillRect(sx+6,sy-7,6,4);ctx.fillStyle='#1a0a30';ctx.font='8px VT323';ctx.textAlign='left';ctx.fillText('[E]TALK',sx-2,sy-10)}
@@ -591,10 +703,25 @@ function drawMinimap(){
     mctx.fillStyle=(t===3||t===11||t===10)?(t===11?'#cc3010':t===10?'#2060d0':'#1040b0'):bc[biomeMap[y]?.[x]]||'#222';
     mctx.fillRect(x*scX,y*scY,scX*2+.5,scY*2+.5);
   }
+  // Draw safe zone circle on minimap
+  const svx=SAFE_CX*scX,svy=SAFE_CY*scY,svr=SAFE_R*scX;
+  mctx.strokeStyle='rgba(68,255,170,0.6)';mctx.lineWidth=1;mctx.beginPath();mctx.arc(svx,svy,svr,0,Math.PI*2);mctx.stroke();
   const ppx=player.x/TILE*scX,ppy=player.y/TILE*scY;
   mctx.fillStyle='rgba(255,255,255,0.3)';mctx.beginPath();mctx.arc(ppx,ppy,4,0,Math.PI*2);mctx.fill();
   mctx.fillStyle='#fff';mctx.beginPath();mctx.arc(ppx,ppy,2,0,Math.PI*2);mctx.fill();
 }
+
+// Draw safe zone boundary (subtle green glow ring)
+function drawSafeZoneBoundary(cx,cy){
+  const sx=SAFE_CX*TILE-cx,sy=SAFE_CY*TILE-cy,r=SAFE_R*TILE;
+  ctx.save();
+  ctx.strokeStyle='rgba(68,255,170,0.18)';ctx.lineWidth=3;
+  ctx.setLineDash([12,8]);ctx.lineDashOffset=waterAnim*0.3;
+  ctx.beginPath();ctx.arc(sx,sy,r,0,Math.PI*2);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
 function update(){
   if(gameState!=='playing'||inventoryOpen)return;
   waterAnim++;
@@ -609,19 +736,51 @@ function update(){
   player.x=Math.max(0,Math.min(WPX-player.w,player.x));player.y=Math.max(0,Math.min(HPX-player.h,player.y));
   if(player.attackTimer>0)player.attackTimer--;if(player.invincible>0)player.invincible--;
   player.mp=Math.min(player.maxMp,player.mp+.04);
+
+  // Check if player is in safe zone
+  const playerInSafe=inSafeZone(player.x+player.w/2,player.y+player.h/2);
+  document.getElementById('safeBadge').classList.toggle('show',playerInSafe);
+
   camera.x=Math.max(0,Math.min(WPX-W,player.x-W/2+player.w/2));
   camera.y=Math.max(0,Math.min(HPX-H,player.y-H/2+player.h/2));
+
   enemies.forEach(e=>{
     if(!e.alive)return;if(e.flashTimer>0)e.flashTimer--;
+
+    // Safe zone: enemy won't aggro if it's inside the zone or player is inside
+    const enemyInSafe=inSafeZone(e.x+e.w/2,e.y+e.h/2);
+    if(enemyInSafe||playerInSafe){
+      // Gently push enemy out of safe zone
+      if(enemyInSafe){
+        const edx=e.x+e.w/2-SAFE_CX*TILE,edy=e.y+e.h/2-SAFE_CY*TILE;
+        const el=Math.sqrt(edx*edx+edy*edy)||1;
+        moveWith(e,edx/el*e.spd,edy/el*e.spd);
+      }
+      e.aggro=false;
+      return;
+    }
+
     const pdx=player.x-e.x,pdy=player.y-e.y,dist=Math.sqrt(pdx*pdx+pdy*pdy);
     if(dist<190)e.aggro=true;if(dist>300)e.aggro=false;
     if(e.aggro){
       const l=dist||1;moveWith(e,pdx/l*e.spd,pdy/l*e.spd);e.dir=pdx>0?1:-1;
+      // ── DAMAGE FIX: deal full integer damage per hit with iframes ──
       if(dist<20&&player.invincible===0){
-        const def=getDef(),raw=e.dmg*0.06,reduced=Math.max(0.04,raw-def*0.008);
-        player.hp=Math.max(0,player.hp-reduced);player.invincible=32;
+        const def=getDef();
+        // Full integer damage, reduced by armor (each DEF point absorbs 1 damage)
+        const dmg=Math.max(1,e.dmg-def);
+        player.hp=Math.max(0,player.hp-dmg);
+        player.invincible=50; // ~0.83s iframes at 60fps
+        spawnDmg(player.x+player.w/2,player.y-10,dmg,'#ff5566');
         for(let i=0;i<6;i++)particles.push({x:player.x+player.w/2,y:player.y+player.h/2,vx:(Math.random()-.5)*6,vy:(Math.random()-1)*4,life:20,maxLife:20,color:'#ff5566',r:3,type:'hit'});
-        if(player.hp<=0){notify('You died! Respawning...');setTimeout(()=>{player.hp=player.maxHp;player.mp=player.maxMp;player.x=85*TILE;player.y=72*TILE},1500)}
+        if(player.hp<=0){
+          notify('You died! Respawning at Hearthstone Village...');
+          setTimeout(()=>{
+            player.hp=player.maxHp;player.mp=player.maxMp;
+            player.x=85*TILE;player.y=72*TILE;
+            player.invincible=120;
+          },1500);
+        }
       }
     }else{e.timer++;if(e.timer>80){e.wvx=(Math.random()-.5)*e.spd*.6;e.wvy=(Math.random()-.5)*e.spd*.6;e.timer=0}moveWith(e,e.wvx,e.wvy)}
   });
@@ -650,6 +809,10 @@ function draw(){
   const stx=Math.max(0,Math.floor(cx/TILE)),etx=Math.min(WW,stx+Math.ceil(W/TILE)+2);
   const sty=Math.max(0,Math.floor(cy/TILE)),ety=Math.min(WH,sty+Math.ceil(H/TILE)+2);
   for(let ty=sty;ty<ety;ty++)for(let tx=stx;tx<etx;tx++)drawTile(tx,ty,tx*TILE-cx,ty*TILE-cy);
+
+  drawSafeZoneBoundary(cx,cy);
+  drawBuildings(cx,cy);
+
   const vd=decorations.filter(d=>d.y-cy>-80&&d.y-cy<H+40&&d.x-cx>-60&&d.x-cx<W+60);
   vd.sort((a,b)=>a.y-b.y);
   vd.forEach(d=>{if(d.type==='rock')drawRock(d,cx,cy)});
@@ -660,6 +823,9 @@ function draw(){
   drawPlayer(cx,cy);
   npcs.forEach(n=>{if(n.y>=player.y)drawNPC(n,cx,cy)});
   enemies.forEach(e=>{if(e.alive&&e.y>=player.y)drawEnemy(e,cx,cy)});
+
+  drawVillageBanner(cx,cy);
+
   particles.forEach(p=>{ctx.globalAlpha=(p.life/p.maxLife)*(p.type==='spark'?.85:.7);ctx.fillStyle=p.color;ctx.fillRect(p.x-p.r/2,p.y-p.r/2,p.r,p.r)});
   ctx.globalAlpha=1;ctx.textAlign='center';
   dmgTexts2.forEach(d=>{
@@ -668,13 +834,13 @@ function draw(){
   });
   ctx.globalAlpha=1;ctx.textAlign='left';
   if(dialogBox){
-    const dw=360,dh=90,ddx=(W-dw)/2,ddy=H-dh-90;
+    const dw=380,dh=90,ddx=(W-dw)/2,ddy=H-dh-90;
     ctx.fillStyle='rgba(4,2,14,0.95)';ctx.fillRect(ddx,ddy,dw,dh);ctx.strokeStyle='rgba(176,106,255,0.6)';ctx.lineWidth=1.5;ctx.strokeRect(ddx,ddy,dw,dh);
     ctx.fillStyle='rgba(176,106,255,0.15)';ctx.fillRect(ddx,ddy,dw,20);ctx.fillStyle='#c084fc';ctx.font='13px VT323';ctx.fillText(dialogBox.name.toUpperCase(),ddx+12,ddy+15);
     ctx.fillStyle='rgba(255,255,255,0.85)';ctx.font='18px VT323';
     const words=dialogBox.text.split(' ');let line='',lines=[];
-    words.forEach(w=>{if((line+w).length>38){lines.push(line);line=w+' '}else line+=w+' '});
-    lines.push(line);lines.slice(0,2).forEach((l,i)=>ctx.fillText(l,ddx+12,ddy+38+i*20));
+    words.forEach(w=>{if((line+w).length>40){lines.push(line);line=w+' '}else line+=w+' '});
+    lines.push(line);lines.slice(0,3).forEach((l,i)=>ctx.fillText(l,ddx+12,ddy+38+i*18));
     ctx.fillStyle='rgba(255,255,255,0.25)';ctx.font='10px VT323';ctx.fillText('[E] close',ddx+dw-58,ddy+dh-8);
     dialogBox.timer--;if(dialogBox.timer<=0)dialogBox=null;
   }
@@ -692,9 +858,8 @@ function startGame(){
   document.getElementById('hud').style.display='flex';
   document.getElementById('hotbar').style.display='flex';
   generateWorld();gameState='playing';
-  notify('Welcome to Wildlands! Press I for inventory.');
+  notify('Welcome to Hearthstone Village! Talk to Elder Mira (E)');
 }
 </script>
 </body>
 </html>
-PYEOF

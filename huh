@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Medieval Kingdom Builder</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#1a1a2e;font-family:'Georgia',serif;overflow:hidden;user-select:none;}
+canvas{display:block;}
+#ui{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
+#sidebar{position:absolute;top:0;right:0;width:240px;height:100%;background:rgba(10,8,20,0.92);border-left:2px solid #8b6914;pointer-events:all;display:flex;flex-direction:column;overflow:hidden;}
+#sidebar-header{background:linear-gradient(180deg,#3d2b05,#1a1200);padding:12px;border-bottom:1px solid #8b6914;text-align:center;}
+#sidebar-header h2{color:#f0c040;font-size:15px;letter-spacing:2px;text-transform:uppercase;}
+#sidebar-header p{color:#c8a84b;font-size:10px;margin-top:2px;}
+.panel{padding:10px;border-bottom:1px solid #3a2f1a;}
+.panel-title{color:#f0c040;font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px;}
+.panel-title span{font-size:16px;}
+.btn{width:100%;padding:7px 10px;margin-bottom:5px;background:rgba(60,40,5,0.8);border:1px solid #8b6914;color:#f0c040;font-family:'Georgia',serif;font-size:12px;cursor:pointer;border-radius:3px;text-align:left;display:flex;align-items:center;gap:8px;transition:all 0.15s;}
+.btn:hover{background:rgba(100,70,10,0.9);border-color:#f0c040;}
+.btn.active{background:rgba(120,90,10,0.9);border-color:#f5d060;box-shadow:0 0 8px rgba(240,192,64,0.3);}
+.btn .icon{font-size:18px;width:22px;text-align:center;}
+.btn .info{display:flex;flex-direction:column;}
+.btn .info .name{font-size:12px;font-weight:bold;}
+.btn .info .cost{font-size:10px;color:#c8a84b;}
+#stats{padding:10px;background:rgba(0,0,0,0.3);}
+.stat-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;}
+.stat-label{color:#c8a84b;font-size:11px;}
+.stat-val{color:#f0c040;font-size:12px;font-weight:bold;}
+.gold-bar{height:6px;background:#2a1f00;border-radius:3px;overflow:hidden;margin-top:3px;}
+.gold-fill{height:100%;background:linear-gradient(90deg,#8b6914,#f0c040);border-radius:3px;transition:width 0.3s;}
+#biome-panel{padding:10px;border-bottom:1px solid #3a2f1a;}
+.biome-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+.biome-btn{padding:5px;background:rgba(30,20,5,0.8);border:1px solid #4a3a1a;color:#c8a84b;font-size:10px;cursor:pointer;border-radius:3px;text-align:center;transition:all 0.15s;}
+.biome-btn:hover,.biome-btn.active{border-color:#f0c040;color:#f0c040;background:rgba(80,60,10,0.8);}
+#mode-panel{padding:10px;border-bottom:1px solid #3a2f1a;}
+.mode-btn{padding:7px;margin-bottom:4px;background:rgba(20,30,60,0.7);border:1px solid #2a4a8b;color:#8ab4f8;font-family:'Georgia',serif;font-size:11px;cursor:pointer;border-radius:3px;text-align:center;width:100%;transition:all 0.15s;}
+.mode-btn:hover,.mode-btn.active{background:rgba(40,60,120,0.9);border-color:#8ab4f8;color:#fff;}
+.mode-btn.danger{background:rgba(60,10,10,0.7);border-color:#8b1414;color:#f08080;}
+.mode-btn.danger:hover{background:rgba(100,20,20,0.9);border-color:#f08080;}
+#tooltip{position:absolute;background:rgba(10,8,20,0.95);border:1px solid #8b6914;color:#f0c040;font-size:11px;padding:6px 10px;border-radius:3px;pointer-events:none;display:none;max-width:180px;font-family:'Georgia',serif;}
+#msg{position:absolute;bottom:60px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);border:1px solid #8b6914;color:#f0c040;padding:6px 16px;border-radius:4px;font-size:12px;font-family:'Georgia',serif;pointer-events:none;opacity:0;transition:opacity 0.5s;white-space:nowrap;}
+#topbar{position:absolute;top:0;left:0;right:240px;height:44px;background:rgba(10,8,20,0.85);border-bottom:2px solid #8b6914;display:flex;align-items:center;padding:0 15px;gap:20px;pointer-events:all;}
+.top-stat{display:flex;align-items:center;gap:6px;color:#f0c040;font-size:12px;}
+.top-stat .icon{font-size:16px;}
+#canvas{position:absolute;top:44px;left:0;right:240px;bottom:0;}
+#controls-hint{position:absolute;bottom:10px;left:10px;color:rgba(200,168,75,0.6);font-size:10px;pointer-events:none;line-height:1.6;}
+</style>
+</head>
+<body>
+<div id="topbar">
+  <div class="top-stat"><span class="icon">🏰</span><span id="top-biome">Grassy Plains</span></div>
+  <div class="top-stat"><span class="icon">💰</span><span id="top-gold">500</span> Gold</div>
+  <div class="top-stat"><span class="icon">⚔️</span><span id="top-units">0</span> Units</div>
+  <div class="top-stat"><span class="icon">🏘️</span><span id="top-villages">0</span> Villages</div>
+  <div class="top-stat" style="margin-left:auto;color:#c8a84b;font-size:11px;" id="top-mode">Mode: Select</div>
+</div>
+<canvas id="canvas"></canvas>
+<div id="ui">
+  <div id="sidebar">
+    <div id="sidebar-header"><h2>⚔ Kingdom Builder</h2><p>Medieval Army Commander</p></div>
+    <div id="stats">
+      <div class="stat-row"><span class="stat-label">💰 Treasury</span><span class="stat-val" id="gold-display">500</span></div>
+      <div class="gold-bar"><div class="gold-fill" id="gold-bar" style="width:50%"></div></div>
+      <div class="stat-row" style="margin-top:6px;"><span class="stat-label">⚔ Army</span><span class="stat-val" id="army-count">0 / 50</span></div>
+      <div class="stat-row"><span class="stat-label">🏘 Villages</span><span class="stat-val" id="village-count">0</span></div>
+    </div>
+    <div id="mode-panel">
+      <div class="panel-title"><span>🖱</span> Actions</div>
+      <button class="mode-btn active" id="btn-select" onclick="setMode('select')">🖱 Select / Move Units</button>
+      <button class="mode-btn" id="btn-village" onclick="setMode('village')">🏘 Place Village (Free)</button>
+      <button class="mode-btn danger" id="btn-delete" onclick="setMode('delete')">🗑 Remove Unit / Village</button>
+    </div>
+    <div class="panel">
+      <div class="panel-title"><span>⚔</span> Recruit Units</div>
+      <button class="btn" onclick="setMode('knight')">
+        <span class="icon">🛡</span><div class="info"><span class="name">Knight</span><span class="cost">80 Gold · Heavy melee</span></div>
+      </button>
+      <button class="btn" onclick="setMode('archer')">
+        <span class="icon">🏹</span><div class="info"><span class="name">Archer</span><span class="cost">50 Gold · Ranged</span></div>
+      </button>
+      <button class="btn" onclick="setMode('spearman')">
+        <span class="icon">🔱</span><div class="info"><span class="name">Spearman</span><span class="cost">40 Gold · Anti-cavalry</span></div>
+      </button>
+      <button class="btn" onclick="setMode('cavalry')">
+        <span class="icon">🐴</span><div class="info"><span class="name">Cavalry</span><span class="cost">120 Gold · Fast melee</span></div>
+      </button>
+      <button class="btn" onclick="setMode('catapult')">
+        <span class="icon">💣</span><div class="info"><span class="name">Catapult</span><span class="cost">200 Gold · Siege</span></div>
+      </button>
+    </div>
+    <div id="biome-panel">
+      <div class="panel-title"><span>🌍</span> Travel to Biome</div>
+      <div class="biome-grid">
+        <button class="biome-btn active" onclick="changeBiome('plains',this)">🌿 Grassy Plains</button>
+        <button class="biome-btn" onclick="changeBiome('forest',this)">🌲 Dark Forest</button>
+        <button class="biome-btn" onclick="changeBiome('desert',this)">🏜 Desert Wastes</button>
+        <button class="biome-btn" onclick="changeBiome('snow',this)">❄ Frozen Tundra</button>
+        <button class="biome-btn" onclick="changeBiome('volcano',this)">🌋 Volcanic Lands</button>
+        <button class="biome-btn" onclick="changeBiome('swamp',this)">🌫 Murky Swamp</button>
+        <button class="biome-btn" onclick="changeBiome('ocean',this)">🌊 Coastal Shores</button>
+        <button class="biome-btn" onclick="changeBiome('highlands',this)">⛰ Rocky Highlands</button>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:auto;padding:10px;">
+      <button class="mode-btn" onclick="gainGold()" style="background:rgba(40,30,5,0.8);border-color:#8b6914;">💰 Collect Taxes (+100)</button>
+      <button class="mode-btn" onclick="clearArmy()" style="margin-top:4px;background:rgba(50,10,10,0.7);border-color:#5a1a1a;color:#f08080;">💀 Disband All Units</button>
+    </div>
+  </div>
+  <div id="tooltip"></div>
+  <div id="msg"></div>
+  <div id="controls-hint">
+    🖱 Click map to place · Drag to scroll · Scroll to zoom<br>
+    Select mode: click unit to move/assign to village
+  </div>
+</div>
+<script>
+const canvas=document.getElementById('canvas');
+const ctx=canvas.getContext('2d');
+let W,H;
+let cam={x:0,y:0,zoom:1};
+let mode='select';
+let gold=500;
+let units=[];
+let villages=[];
+let buildings=[];
+let trees=[];
+let particles=[];
+let selectedUnit=null;
+let dragging=false,dragStart={x:0,y:0},camStart={x:0,y:0};
+let animFrame=0;
+let currentBiome='plains';
+let msgTimer=0;
+
+const BIOMES={
+  plains:{name:'Grassy Plains',sky:['#87ceeb','#b0e0ff'],ground:'#4a7c3f',grass:'#5a9448',road:'#c4a882',water:'#4499bb',hill:'#6aaa55',tree:'🌳',treeColor:'#2d6a2d',fog:false,castle:true},
+  forest:{name:'Dark Forest',sky:['#1a2a1a','#2a3a2a'],ground:'#1e3a1e',grass:'#1a3a1a',road:'#3a2a1a',water:'#1a3a4a',hill:'#1a4a1a',tree:'🌲',treeColor:'#1a4a1a',fog:true,castle:false},
+  desert:{name:'Desert Wastes',sky:['#f4c57a','#e8b060'],ground:'#c8a050',grass:'#d4aa60',road:'#e0c080',water:'#3366aa',hill:'#b89040',tree:'🌵',treeColor:'#7a9a2a',fog:false,castle:false},
+  snow:{name:'Frozen Tundra',sky:['#c8d8f0','#a0b8e0'],ground:'#dce8f5',grass:'#e8f0ff',road:'#b0c0d8',water:'#4488cc',hill:'#c0d4e8',tree:'🌲',treeColor:'#336633',fog:true,castle:false},
+  volcano:{name:'Volcanic Lands',sky:['#2a0a00','#3a1500'],ground:'#2a1800',grass:'#3a1800',road:'#4a2000',water:'#cc4400',hill:'#3a1500',tree:'🌋',treeColor:'#4a0000',fog:true,castle:false},
+  swamp:{name:'Murky Swamp',sky:['#1a2a10','#2a3a18'],ground:'#2a3a18',grass:'#2e4020',road:'#3a2a18',water:'#2a4a2a',hill:'#2a3a18',tree:'🌿',treeColor:'#2a5a1a',fog:true,castle:false},
+  ocean:{name:'Coastal Shores',sky:['#4499cc','#88bbdd'],ground:'#c8b88a',grass:'#d0c090',road:'#e0d0a0',water:'#1166bb',hill:'#b0a070',tree:'🌴',treeColor:'#3a7a1a',fog:false,castle:false},
+  highlands:{name:'Rocky Highlands',sky:['#7090b0','#5a7a9a'],ground:'#6a6055',grass:'#7a7060',road:'#8a8070',water:'#4488aa',hill:'#7a6a60',tree:'🌲',treeColor:'#3a5a3a',fog:false,castle:false}
+};
+
+const UNITS={
+  knight:{name:'Knight',icon:'🛡',cost:80,color:'#c0c0d8',hp:100,speed:1.2,size:22,glow:'#8888ff'},
+  archer:{name:'Archer',icon:'🏹',cost:50,color:'#c8a860',hp:60,speed:1.5,size:18,glow:'#ffcc44'},
+  spearman:{name:'Spearman',icon:'🔱',cost:40,color:'#a08040',hp:80,speed:1.3,size:19,glow:'#cc8833'},
+  cavalry:{name:'Cavalry',icon:'🐴',cost:120,color:'#d4a060',hp:120,speed:2.5,size:28,glow:'#ffaa22'},
+  catapult:{name:'Catapult',icon:'💣',cost:200,color:'#808070',hp:150,speed:0.5,size:34,glow:'#ff4400'}
+};
+
+const MAP_W=3000,MAP_H=2000;
+
+function worldToScreen(wx,wy){
+  return{x:(wx-cam.x)*cam.zoom+W/2,y:(wy-cam.y)*cam.zoom+H/2};
+}
+function screenToWorld(sx,sy){
+  return{x:(sx-W/2)/cam.zoom+cam.x,y:(sy-H/2)/cam.zoom+cam.y};
+}
+
+function initWorld(){
+  buildings=[];trees=[];villages=[];units=[];
+  const b=BIOMES[currentBiome];
+  if(b.castle){
+    const castleX=0,castleY=-200;
+    buildings.push({type:'castle',x:castleX,y:castleY,w:200,h:180,color:'#888890'});
+    const townBuildings=[
+      {x:-350,y:50,w:80,h:70},{x:-250,y:80,w:60,h:60},{x:-160,y:60,w:70,h:65},
+      {x:120,y:50,w:90,h:75},{x:230,y:80,w:65,h:60},{x:310,y:55,w:75,h:70},
+      {x:-380,y:160,w:55,h:55},{x:-300,y:170,w:65,h:50},{x:-200,y:180,w:70,h:60},
+      {x:160,y:160,w:60,h:55},{x:250,y:170,w:70,h:60},{x:340,y:155,w:60,h:65},
+      {x:-420,y:-80,w:70,h:65},{x:360,y:-70,w:65,h:60},
+      {x:-380,y:-180,w:60,h:55},{x:320,y:-160,w:65,h:55},
+    ];
+    townBuildings.forEach(b2=>buildings.push({type:'house',x:b2.x+castleX,y:b2.y+castleY,...b2,color:'#c09060'}));
+    buildings.push({type:'market',x:-80+castleX,y:200+castleY,w:160,h:40,color:'#e08030'});
+    buildings.push({type:'well',x:20+castleX,y:180+castleY,w:30,h:30,color:'#8090a0'});
+    buildings.push({type:'wall',x:-450+castleX,y:-280+castleY,w:900,h:20,color:'#909098'});
+    buildings.push({type:'wall',x:-450+castleX,y:260+castleY,w:900,h:20,color:'#909098'});
+    buildings.push({type:'wall',x:-450+castleX,y:-280+castleY,w:20,h:560,color:'#909098'});
+    buildings.push({type:'wall',x:430+castleX,y:-280+castleY,w:20,h:560,color:'#909098'});
+  }
+  for(let i=0;i<120;i++){
+    const angle=Math.random()*Math.PI*2;
+    const dist=400+Math.random()*1100;
+    trees.push({x:Math.cos(angle)*dist,y:Math.sin(angle)*dist,scale:0.8+Math.random()*0.6,sway:Math.random()*Math.PI*2});
+  }
+  for(let i=0;i<60;i++){
+    trees.push({x:(Math.random()-0.5)*MAP_W*0.8,y:(Math.random()-0.5)*MAP_H*0.6,scale:0.7+Math.random()*0.5,sway:Math.random()*Math.PI*2});
+  }
+  cam.x=0;cam.y=0;cam.zoom=0.7;
+}
+
+function changeBiome(b,el){
+  currentBiome=b;
+  document.querySelectorAll('.biome-btn').forEach(btn=>btn.classList.remove('active'));
+  if(el) el.classList.add('active');
+  document.getElementById('top-biome').textContent=BIOMES[b].name;
+  initWorld();
+  showMsg('Traveled to '+BIOMES[b].name+'!');
+}
+
+function setMode(m){
+  mode=m;
+  document.querySelectorAll('.mode-btn,.btn').forEach(b=>b.classList.remove('active'));
+  const el=document.getElementById('btn-'+m);
+  if(el) el.classList.add('active');
+  selectedUnit=null;
+  document.getElementById('top-mode').textContent='Mode: '+(m.charAt(0).toUpperCase()+m.slice(1));
+}
+
+function showMsg(txt){
+  const el=document.getElementById('msg');
+  el.textContent=txt;el.style.opacity='1';
+  clearTimeout(msgTimer);
+  msgTimer=setTimeout(()=>{el.style.opacity='0';},2000);
+}
+
+function gainGold(){gold+=100;updateUI();showMsg('+100 Gold collected!');}
+function clearArmy(){units=[];updateUI();showMsg('Army disbanded.');}
+function spendGold(amt){if(gold<amt){showMsg('Not enough gold!');return false;}gold-=amt;return true;}
+
+function updateUI(){
+  document.getElementById('gold-display').textContent=gold;
+  document.getElementById('top-gold').textContent=gold;
+  document.getElementById('gold-bar').style.width=Math.min(100,gold/10)+'%';
+  document.getElementById('army-count').textContent=units.length+' / 50';
+  document.getElementById('top-units').textContent=units.length;
+  document.getElementById('village-count').textContent=villages.length;
+  document.getElementById('top-villages').textContent=villages.length;
+}
+
+function addParticle(x,y,color,text){
+  particles.push({x,y,vx:(Math.random()-0.5)*2,vy:-2-Math.random()*2,life:60,maxLife:60,color,text});
+}
+
+function drawWorld(){
+  const b=BIOMES[currentBiome];
+  const sky=ctx.createLinearGradient(0,0,0,H);
+  sky.addColorStop(0,b.sky[0]);sky.addColorStop(1,b.sky[1]);
+  ctx.fillStyle=sky;ctx.fillRect(0,0,W,H);
+
+  ctx.save();
+  ctx.translate(W/2,H/2);ctx.scale(cam.zoom,cam.zoom);ctx.translate(-cam.x,-cam.y);
+
+  ctx.fillStyle=b.ground;
+  ctx.fillRect(-MAP_W/2,-MAP_H/2,MAP_W,MAP_H);
+
+  ctx.fillStyle=b.grass;
+  for(let i=0;i<30;i++){
+    const seed=i*137.5;
+    const px=((seed*73)%MAP_W)-MAP_W/2;
+    const py=((seed*53)%MAP_H)-MAP_H/2;
+    ctx.globalAlpha=0.4;
+    ctx.beginPath();ctx.ellipse(px,py,80+i*3,40+i*2,i*0.3,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  if(BIOMES[currentBiome].castle){
+    ctx.strokeStyle=b.road;ctx.lineWidth=28;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,600);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-600);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(600,0);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(-600,0);ctx.stroke();
+    ctx.strokeStyle=b.road;ctx.lineWidth=18;
+    ctx.beginPath();ctx.moveTo(-450,280);ctx.lineTo(450,280);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(-450,-280);ctx.lineTo(450,-280);ctx.stroke();
+    ctx.strokeStyle=b.road;ctx.lineWidth=8;ctx.setLineDash([15,10]);
+    ctx.beginPath();ctx.moveTo(-450,0);ctx.lineTo(450,0);ctx.stroke();
+    ctx.setLineDash([]);
+    if(currentBiome==='plains'){
+      ctx.strokeStyle=b.water;ctx.lineWidth=22;
+      ctx.beginPath();ctx.moveTo(-800,350);ctx.bezierCurveTo(-400,320,400,380,800,340);ctx.stroke();
+      ctx.strokeStyle='rgba(200,240,255,0.3)';ctx.lineWidth=10;
+      ctx.beginPath();ctx.moveTo(-800,348);ctx.bezierCurveTo(-400,318,400,378,800,338);ctx.stroke();
+    }
+  }
+
+  if(currentBiome==='plains'||currentBiome==='ocean'||currentBiome==='swamp'){
+    ctx.fillStyle=b.water;ctx.globalAlpha=0.8;
+    ctx.beginPath();ctx.ellipse(-700,-300,180,100,0.3,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.ellipse(600,400,220,120,-0.2,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=1;
+  }
+
+  buildings.forEach(bg=>{drawBuilding(ctx,bg,b);});
+  villages.forEach(v=>{drawVillage(ctx,v);});
+
+  trees.forEach(tr=>{
+    const s=worldToScreen(tr.x,tr.y);
+    ctx.restore();ctx.save();
+    const sz=30*tr.scale*cam.zoom;
+    if(s.x>-sz&&s.x<W+sz&&s.y>-sz&&s.y<H+sz){
+      ctx.font=sz+'px serif';ctx.textAlign='center';ctx.textBaseline='middle';
+      const sway=Math.sin(animFrame*0.02+tr.sway)*2*cam.zoom;
+      ctx.fillText(BIOMES[currentBiome].tree,s.x+sway,s.y);
+    }
+    ctx.save();ctx.translate(W/2,H/2);ctx.scale(cam.zoom,cam.zoom);ctx.translate(-cam.x,-cam.y);
+  });
+
+  ctx.restore();
+
+  units.forEach(u=>{drawUnit(u);});
+
+  particles.forEach(p=>{
+    const s=worldToScreen(p.x,p.y);
+    ctx.globalAlpha=p.life/p.maxLife;
+    ctx.fillStyle=p.color;ctx.font='12px Georgia';ctx.textAlign='center';
+    ctx.fillText(p.text,s.x,s.y);ctx.globalAlpha=1;
+  });
+
+  if(BIOMES[currentBiome].fog){
+    const fog=ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*0.2,W/2,H/2,Math.min(W,H)*0.75);
+    fog.addColorStop(0,'rgba(0,0,0,0)');fog.addColorStop(1,'rgba(0,0,0,0.55)');
+    ctx.fillStyle=fog;ctx.fillRect(0,0,W,H);
+  }
+
+  if(selectedUnit){
+    const s=worldToScreen(selectedUnit.x,selectedUnit.y);
+    ctx.strokeStyle='#ffff00';ctx.lineWidth=2;ctx.setLineDash([5,3]);
+    ctx.beginPath();ctx.arc(s.x,s.y,UNITS[selectedUnit.type].size*cam.zoom+6,0,Math.PI*2);ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+function drawBuilding(ctx,bg,biome){
+  const s=worldToScreen(bg.x,bg.y);
+  const sw=bg.w*cam.zoom,sh=bg.h*cam.zoom;
+  if(s.x+sw<0||s.x-sw>W||s.y+sh<0||s.y-sh>H) return;
+  if(bg.type==='castle'){
+    ctx.fillStyle='#808090';ctx.fillRect(s.x-sw/2,s.y-sh/2,sw,sh);
+    ctx.fillStyle='#909098';
+    for(let i=0;i<8;i++) ctx.fillRect(s.x-sw/2+i*(sw/8),s.y-sh/2-sh*0.1,(sw/10),(sh*0.1));
+    ctx.fillStyle='#3a2a10';ctx.fillRect(s.x-sw*0.12,s.y+sh/2-sh*0.3,sw*0.24,sh*0.3);
+    ctx.beginPath();ctx.arc(s.x,s.y+sh/2-sh*0.3,sw*0.12,Math.PI,0);ctx.fillStyle='#3a2a10';ctx.fill();
+    ctx.fillStyle='#7a7a8a';
+    ctx.fillRect(s.x-sw/2-sw*0.12,s.y-sh/2-sh*0.15,sw*0.22,sh*1.15);
+    ctx.fillRect(s.x+sw/2-sw*0.10,s.y-sh/2-sh*0.15,sw*0.22,sh*1.15);
+    ctx.fillStyle='#606070';
+    ctx.fillRect(s.x-sw/2-sw*0.14,s.y-sh/2-sh*0.25,sw*0.26,sh*0.12);
+    ctx.fillRect(s.x+sw/2-sw*0.12,s.y-sh/2-sh*0.25,sw*0.26,sh*0.12);
+    ctx.fillStyle='#cc2222';ctx.fillRect(s.x-sw*0.02,s.y-sh/2-sh*0.5,sw*0.03,sh*0.25);
+    ctx.beginPath();ctx.moveTo(s.x+sw*0.01,s.y-sh/2-sh*0.5);ctx.lineTo(s.x+sw*0.12,s.y-sh/2-sh*0.42);ctx.lineTo(s.x+sw*0.01,s.y-sh/2-sh*0.34);ctx.fillStyle='#cc2222';ctx.fill();
+    ctx.fillStyle='rgba(255,200,100,0.5)';
+    ctx.fillRect(s.x-sw*0.25,s.y-sh*0.2,sw*0.15,sh*0.2);ctx.fillRect(s.x+sw*0.10,s.y-sh*0.2,sw*0.15,sh*0.2);
+    ctx.font=(14*cam.zoom)+'px Georgia';ctx.fillStyle='#f0c040';ctx.textAlign='center';
+    ctx.fillText('🏰 Castle',s.x,s.y+sh/2+16*cam.zoom);
+  } else if(bg.type==='house'){
+    ctx.fillStyle=bg.color;ctx.fillRect(s.x-sw/2,s.y-sh/2,sw,sh);
+    ctx.fillStyle='#8a3a1a';
+    ctx.beginPath();ctx.moveTo(s.x-sw*0.55,s.y-sh/2);ctx.lineTo(s.x,s.y-sh);ctx.lineTo(s.x+sw*0.55,s.y-sh/2);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#3a2010';ctx.fillRect(s.x-sw*0.1,s.y+sh/2-sh*0.4,sw*0.2,sh*0.4);
+    ctx.fillStyle='rgba(255,220,100,0.5)';ctx.fillRect(s.x-sw*0.35,s.y-sh*0.1,sw*0.2,sh*0.2);ctx.fillRect(s.x+sw*0.15,s.y-sh*0.1,sw*0.2,sh*0.2);
+  } else if(bg.type==='wall'){
+    ctx.fillStyle='#808898';ctx.fillRect(s.x-sw/2,s.y-sh/2,sw,sh);
+    if(bg.w>bg.h){
+      ctx.fillStyle='#909098';const n=Math.floor(sw/30);
+      for(let i=0;i<n;i++) ctx.fillRect(s.x-sw/2+i*(sw/n),s.y-sh/2-4*cam.zoom,(sw/n*0.6),4*cam.zoom);
+    }
+  } else if(bg.type==='market'){
+    ctx.fillStyle='#c85010';ctx.fillRect(s.x-sw/2,s.y-sh/2,sw,sh);
+    ctx.fillStyle='#e06820';
+    for(let i=0;i<4;i++) ctx.fillRect(s.x-sw/2+i*(sw/4)+2,s.y-sh/2,sw/4-4,sh*0.7);
+    ctx.font=(11*cam.zoom)+'px Georgia';ctx.fillStyle='#f0c040';ctx.textAlign='center';
+    ctx.fillText('🛒 Market',s.x,s.y+sh/2+14*cam.zoom);
+  } else if(bg.type==='well'){
+    ctx.fillStyle='#909090';ctx.beginPath();ctx.arc(s.x,s.y,sw/2,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='#606060';ctx.lineWidth=2*cam.zoom;ctx.stroke();
+  }
+}
+
+function drawVillage(ctx,v){
+  const s=worldToScreen(v.x,v.y);const sz=cam.zoom;
+  ctx.fillStyle='rgba(180,150,100,0.3)';ctx.beginPath();ctx.ellipse(s.x,s.y,70*sz,50*sz,0,0,Math.PI*2);ctx.fill();
+  const colors=['#c09060','#b08050','#d0a070'];
+  const positions=[{x:-20,y:-10},{x:20,y:-15},{x:0,y:15},{x:-25,y:15}];
+  positions.forEach((p,i)=>{
+    const bw=30*sz,bh=25*sz;
+    ctx.fillStyle=colors[i%3];ctx.fillRect(s.x+p.x*sz-bw/2,s.y+p.y*sz-bh/2,bw,bh);
+    ctx.fillStyle='#7a2a10';ctx.beginPath();ctx.moveTo(s.x+p.x*sz-bw*0.55,s.y+p.y*sz-bh/2);ctx.lineTo(s.x+p.x*sz,s.y+p.y*sz-bh);ctx.lineTo(s.x+p.x*sz+bw*0.55,s.y+p.y*sz-bh/2);ctx.closePath();ctx.fill();
+  });
+  ctx.fillStyle='#cc2222';ctx.fillRect(s.x-1,s.y-55*sz,2,30*sz);
+  ctx.beginPath();ctx.moveTo(s.x,s.y-55*sz);ctx.lineTo(s.x+15*sz,s.y-48*sz);ctx.lineTo(s.x,s.y-41*sz);ctx.fillStyle='#cc2222';ctx.fill();
+  ctx.font=(11*sz)+'px Georgia';ctx.fillStyle='#f0c040';ctx.textAlign='center';
+  ctx.fillText(v.name,s.x,s.y+52*sz);
+  if(v.units&&v.units.length>0){ctx.font=(10*sz)+'px Georgia';ctx.fillStyle='#aaddff';ctx.fillText('⚔ '+v.units.length+' troops',s.x,s.y+64*sz);}
+}
+
+function drawUnit(u){
+  const s=worldToScreen(u.x,u.y);const t=UNITS[u.type];const sz=t.size*cam.zoom;
+  if(s.x<-sz||s.x>W+sz||s.y<-sz||s.y>H+sz) return;
+  ctx.fillStyle='rgba(0,0,0,0.25)';ctx.beginPath();ctx.ellipse(s.x,s.y+sz*0.5,sz*0.55,sz*0.2,0,0,Math.PI*2);ctx.fill();
+  if(u===selectedUnit){ctx.strokeStyle=t.glow;ctx.lineWidth=3;ctx.beginPath();ctx.arc(s.x,s.y,sz*0.8,0,Math.PI*2);ctx.stroke();}
+  ctx.fillStyle=t.color;ctx.globalAlpha=0.85;ctx.beginPath();ctx.arc(s.x,s.y,sz*0.7,0,Math.PI*2);ctx.fill();
+  ctx.globalAlpha=1;ctx.strokeStyle=t.glow;ctx.lineWidth=1.5*cam.zoom;ctx.beginPath();ctx.arc(s.x,s.y,sz*0.7,0,Math.PI*2);ctx.stroke();
+  ctx.font=sz+'px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(t.icon,s.x,s.y+sz*0.05);
+  const hp=u.hp/t.hp;
+  ctx.fillStyle='#222';ctx.fillRect(s.x-sz*0.7,s.y+sz*0.8,sz*1.4,4*cam.zoom);
+  ctx.fillStyle=hp>0.6?'#44cc44':hp>0.3?'#cccc44':'#cc4444';ctx.fillRect(s.x-sz*0.7,s.y+sz*0.8,sz*1.4*hp,4*cam.zoom);
+  if(u.village){ctx.font=(9*cam.zoom)+'px Georgia';ctx.fillStyle='#aaddff';ctx.textAlign='center';ctx.fillText('🏘',s.x+sz*0.75,s.y-sz*0.75);}
+}
+
+let dragOccurred=false;
+canvas.addEventListener('mousedown',e=>{
+  dragOccurred=false;dragStart={x:e.clientX,y:e.clientY};camStart={x:cam.x,y:cam.y};
+});
+canvas.addEventListener('mousemove',e=>{
+  const dx=e.clientX-dragStart.x,dy=e.clientY-dragStart.y;
+  if(Math.abs(dx)>5||Math.abs(dy)>5){
+    dragOccurred=true;dragging=true;
+    cam.x=camStart.x-dx/cam.zoom;cam.y=camStart.y-dy/cam.zoom;
+  }
+  const w=screenToWorld(e.clientX,e.clientY);
+  const tt=document.getElementById('tooltip');
+  const near=units.find(u=>Math.hypot(u.x-w.x,u.y-w.y)<UNITS[u.type].size+5);
+  if(near){
+    tt.style.display='block';tt.style.left=(e.clientX+15)+'px';tt.style.top=(e.clientY-30)+'px';
+    tt.innerHTML='<b>'+UNITS[near.type].icon+' '+UNITS[near.type].name+'</b><br>HP: '+Math.round(near.hp)+'/'+UNITS[near.type].hp+(near.village?'<br>🏘 '+near.village:'');
+  } else {
+    const nv=villages.find(v=>Math.hypot(v.x-w.x,v.y-w.y)<40);
+    if(nv){tt.style.display='block';tt.style.left=(e.clientX+15)+'px';tt.style.top=(e.clientY-30)+'px';tt.innerHTML='<b>🏘 '+nv.name+'</b><br>Troops: '+(nv.units?nv.units.length:0);}
+    else tt.style.display='none';
+  }
+});
+canvas.addEventListener('mouseup',e=>{
+  dragging=false;
+  if(dragOccurred){dragOccurred=false;return;}
+  const w=screenToWorld(e.clientX,e.clientY);
+  handleClick(w.x,w.y);
+});
+canvas.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const factor=e.deltaY>0?0.85:1.15;
+  cam.zoom=Math.max(0.3,Math.min(3,cam.zoom*factor));
+},{passive:false});
+
+function handleClick(wx,wy){
+  if(mode==='select'){
+    const u=units.find(u=>Math.hypot(u.x-wx,u.y-wy)<UNITS[u.type].size+5);
+    if(u){selectedUnit=u;showMsg(UNITS[u.type].name+' selected. Click a location or village to assign.');return;}
+    if(selectedUnit){
+      const v=villages.find(v=>Math.hypot(v.x-wx,v.y-wy)<50);
+      if(v){
+        if(!v.units) v.units=[];
+        selectedUnit.village=v.name;
+        if(!v.units.includes(selectedUnit)) v.units.push(selectedUnit);
+        selectedUnit.x=v.x+(Math.random()-0.5)*60;selectedUnit.y=v.y+(Math.random()-0.5)*40;
+        showMsg(UNITS[selectedUnit.type].name+' assigned to '+v.name+'!');selectedUnit=null;return;
+      }
+      selectedUnit.x=wx;selectedUnit.y=wy;addParticle(wx,wy,'#f0c040','⚔');selectedUnit=null;
+    } else {
+      const v=villages.find(v=>Math.hypot(v.x-wx,v.y-wy)<50);
+      if(v) showMsg(v.name+' — '+((v.units&&v.units.length)||0)+' troops garrisoned.');
+    }
+  } else if(mode==='village'){
+    const name='Village '+(villages.length+1);
+    villages.push({x:wx,y:wy,name,units:[]});
+    addParticle(wx,wy,'#f0c040','🏘 Founded!');updateUI();showMsg(name+' established!');
+  } else if(mode==='delete'){
+    const ui=units.findIndex(u=>Math.hypot(u.x-wx,u.y-wy)<UNITS[u.type].size+5);
+    if(ui!==-1){gold+=Math.floor(UNITS[units[ui].type].cost*0.4);units.splice(ui,1);updateUI();showMsg('Unit disbanded (+gold returned).');return;}
+    const vi=villages.findIndex(v=>Math.hypot(v.x-wx,v.y-wy)<50);
+    if(vi!==-1){const vn=villages[vi].name;villages.splice(vi,1);updateUI();showMsg(vn+' abandoned.');return;}
+    showMsg('Click a unit or village to remove it.');
+  } else if(UNITS[mode]){
+    if(units.length>=50){showMsg('Army is at full capacity!');return;}
+    const t=UNITS[mode];
+    if(!spendGold(t.cost)) return;
+    units.push({type:mode,x:wx,y:wy,hp:t.hp,id:Date.now()+Math.random(),village:null});
+    addParticle(wx,wy,t.glow,t.icon+' Recruited!');updateUI();showMsg(t.name+' recruited for '+t.cost+' gold!');
+  }
+}
+
+setInterval(()=>{if(villages.length>0){gold+=villages.length*5;updateUI();}},5000);
+
+function animate(){
+  animFrame++;
+  units.forEach(u=>{
+    if(u!==selectedUnit){u.x+=Math.sin(animFrame*0.03+u.id*10)*0.15;u.y+=Math.cos(animFrame*0.02+u.id*7)*0.1;}
+  });
+  particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy*=0.92;p.life--;});
+  particles=particles.filter(p=>p.life>0);
+  drawWorld();updateUI();
+  requestAnimationFrame(animate);
+}
+
+function init(){
+  const par=document.body;
+  W=par.offsetWidth-240;H=par.offsetHeight-44;
+  canvas.width=W;canvas.height=H;
+  canvas.style.width=W+'px';canvas.style.height=H+'px';
+  initWorld();animate();
+}
+
+window.addEventListener('resize',()=>{
+  W=document.body.offsetWidth-240;H=document.body.offsetHeight-44;
+  canvas.width=W;canvas.height=H;
+});
+
+init();
+</script>
+</body>
+</html>
